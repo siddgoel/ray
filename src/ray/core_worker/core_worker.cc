@@ -15,7 +15,16 @@
 #include "ray/core_worker/core_worker.h"
 
 #include <google/protobuf/util/json_util.h>
+#include <unistd.h>
 
+#include <array>
+#include <cstdio>
+#include <iostream>
+#include <memory>
+#include <stdexcept>
+#include <string>
+
+#include "absl/strings/str_format.h"
 #include "absl/time/clock.h"
 #include "boost/fiber/all.hpp"
 #include "ray/common/bundle_spec.h"
@@ -68,6 +77,30 @@ ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &rep
                         object_info.spilled_url(),
                         NodeID::FromBinary(object_info.spilled_node_id()));
 }
+
+void RunPySpy() {
+  const std::string cmd = absl::StrFormat(
+      "sudo env \"PATH=$PATH\" py-spy dump --pid %d --nonblocking", getpid());
+
+  std::array<char, 128> buffer;
+  std::string result;
+
+  auto pipe = popen(cmd.data(), "r");  // get rid of shared_ptr
+
+  if (!pipe) {
+    RAY_LOG(FATAL) << "dbg popen " << cmd << " failed!";
+  }
+
+  while (!feof(pipe)) {
+    if (fgets(buffer.data(), 128, pipe) != nullptr) result += buffer.data();
+  }
+
+  auto rc = pclose(pipe);
+
+  RAY_LOG(INFO) << "dbg finished running " << cmd << " code=" << rc << " output:\n"
+                << result;
+}
+
 }  // namespace
 
 CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id)
@@ -444,6 +477,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           RAY_LOG(INFO) << "Event stats:\n" << io_service_.stats().StatsString() << "\n";
           RAY_LOG(INFO) << "Task stats:\n"
                         << task_execution_service_.stats().StatsString() << "\n";
+          RunPySpy();
         },
         event_stats_print_interval_ms);
   }
@@ -2914,6 +2948,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
 void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
                                rpc::LocalGCReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
+  RunPySpy();
   if (options_.gc_collect != nullptr) {
     const auto start = absl::Now();
     options_.gc_collect();
