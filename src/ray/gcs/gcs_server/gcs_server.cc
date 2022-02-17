@@ -406,8 +406,7 @@ void GcsServer::InitRaySync(const GcsInitData &gcs_init_data) {
   gcs_resource_report_poller->Initialize(gcs_init_data);
 
   auto grpc_based_resource_broadcaster = std::make_unique<GrpcBasedResourceBroadcaster>(
-      raylet_client_pool_,
-      [this](rpc::ResourceUsageBroadcastData &buffer) {
+      raylet_client_pool_, [this](rpc::ResourceUsageBroadcastData &buffer) {
         gcs_resource_manager_->GetResourceUsageBatchForBroadcast(buffer);
       });
 
@@ -417,9 +416,7 @@ void GcsServer::InitRaySync(const GcsInitData &gcs_init_data) {
                                         std::move(gcs_resource_report_poller));
 
   ray_sync_->Start();
-
 }
-
 
 void GcsServer::InitStatsHandler() {
   RAY_CHECK(gcs_table_storage_);
