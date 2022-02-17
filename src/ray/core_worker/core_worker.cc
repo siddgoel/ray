@@ -24,6 +24,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/time/clock.h"
 #include "boost/fiber/all.hpp"
@@ -78,12 +79,9 @@ ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &rep
                         NodeID::FromBinary(object_info.spilled_node_id()));
 }
 
-void RunPySpy() {
-  const std::string cmd = absl::StrFormat(
-      "sudo env \"PATH=$PATH\" py-spy dump --pid %d --nonblocking", getpid());
-
+std::string RunPySpy(const std::string &cmd) {
+  std::string result = absl::StrCat("output from ", cmd, ":\n");
   std::array<char, 128> buffer;
-  std::string result;
 
   auto pipe = popen(cmd.data(), "r");  // get rid of shared_ptr
 
@@ -96,9 +94,8 @@ void RunPySpy() {
   }
 
   auto rc = pclose(pipe);
-
-  RAY_LOG(INFO) << "dbg finished running " << cmd << " code=" << rc << " output:\n"
-                << result;
+  absl::StrAppend(&result, "\nreturn code=", rc, "\n");
+  return result;
 }
 
 }  // namespace
@@ -472,12 +469,19 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
+    const auto proc_pid = getpid();
+    const std::string nonblocking_cmd = absl::StrFormat(
+        "sudo env \"PATH=$PATH\" py-spy dump --pid %d --nonblocking", proc_pid);
+    const std::string native_cmd = absl::StrFormat(
+        "sudo env \"PATH=$PATH\" py-spy dump --pid %d --native", proc_pid);
     periodical_runner_.RunFnPeriodically(
-        [this] {
+        [this, nonblocking_cmd, native_cmd] {
           RAY_LOG(INFO) << "Event stats:\n" << io_service_.stats().StatsString() << "\n";
           RAY_LOG(INFO) << "Task stats:\n"
                         << task_execution_service_.stats().StatsString() << "\n";
-          RunPySpy();
+          RAY_LOG(INFO) << "dbg periodic py-spy non-blocking:\n"
+                        << RunPySpy(nonblocking_cmd);
+          RAY_LOG(INFO) << "dbg periodic py-spy native:\n" << RunPySpy(native_cmd);
         },
         event_stats_print_interval_ms);
   }
@@ -2948,7 +2952,13 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
 void CoreWorker::HandleLocalGC(const rpc::LocalGCRequest &request,
                                rpc::LocalGCReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
-  RunPySpy();
+  const auto proc_pid = getpid();
+  const std::string nonblocking_cmd = absl::StrFormat(
+      "sudo env \"PATH=$PATH\" py-spy dump --pid %d --nonblocking", proc_pid);
+  const std::string native_cmd =
+      absl::StrFormat("sudo env \"PATH=$PATH\" py-spy dump --pid %d --native", proc_pid);
+  RAY_LOG(INFO) << "dbg LocalGC py-spy non-blocking:\n" << RunPySpy(nonblocking_cmd);
+  RAY_LOG(INFO) << "dbg LocalGC py-spy native:\n" << RunPySpy(native_cmd);
   if (options_.gc_collect != nullptr) {
     const auto start = absl::Now();
     options_.gc_collect();
