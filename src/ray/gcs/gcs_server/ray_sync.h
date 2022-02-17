@@ -17,21 +17,18 @@
 namespace ray {
 namespace sync {
 
-
-
 class RaySync {
  public:
   RaySync(std::unique_ptr<ray::gcs::GrpcBasedResourceBroadcaster> braodcaster,
           std::unique_ptr<ray::gcs::GcsResourceReportPoller> poller)
-      : broadcaster_(std::move(braodcaster)),
-        poller_(std::move(poller)) {}
+      : broadcaster_(std::move(braodcaster)), poller_(std::move(poller)) {}
 
   void Start();
   void Stop();
 
   void AddNode(const rpc::GcsNodeInfo &node_info) {
     broadcaster_->HandleNodeAdded(node_info)
-    gcs_resource_report_poller_->HandleNodeAdded(node_info);
+        gcs_resource_report_poller_->HandleNodeAdded(node_info);
   }
 
   void RemoveNode() {
@@ -39,15 +36,12 @@ class RaySync {
     gcs_resource_report_poller_->HandleNodeRemoved(*node);
   }
 
-  std::string DebugString() {
-    return broadcaster_->DebugString();
-  }
+  std::string DebugString() { return broadcaster_->DebugString(); }
 
  private:
   std::unique_ptr<ray::gcs::GrpcBasedResourceBroadcaster> broadcaster_;
   std::unique_ptr<ray::gcs::GcsResourceReportPoller> poller_;
 };
 
-
-}
-}
+}  // namespace sync
+}  // namespace ray
