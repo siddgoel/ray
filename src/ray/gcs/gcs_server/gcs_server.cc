@@ -158,11 +158,8 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init stats handler.
   InitStatsHandler();
 
-  // Init resource report polling.
-  InitResourceReportPolling(gcs_init_data);
-
-  // Init resource report broadcasting.
-  InitResourceReportBroadcasting(gcs_init_data);
+  // Init synchronization service
+  InitRaySync(gcs_init_data);
 
   // Install event listeners.
   InstallEventListeners();
@@ -209,9 +206,7 @@ void GcsServer::Stop() {
     // time, causing many nodes die after GCS's failure.
     gcs_heartbeat_manager_->Stop();
 
-    gcs_resource_report_poller_->Stop();
-
-    grpc_based_resource_broadcaster_->Stop();
+    ray_sync_->Stop();
 
     // Shutdown the rpc server
     rpc_server_.Shutdown();
@@ -403,27 +398,28 @@ void GcsServer::StoreGcsServerAddressInRedis() {
   RAY_LOG(INFO) << "Finished setting gcs server address: " << address;
 }
 
-void GcsServer::InitResourceReportPolling(const GcsInitData &gcs_init_data) {
-  gcs_resource_report_poller_.reset(new GcsResourceReportPoller(
+void GcsServer::InitRaySync(const GcsInitData &gcs_init_data) {
+  auto gcs_resource_report_poller = std::make_unique<GcsResourceReportPoller>(
       raylet_client_pool_, [this](const rpc::ResourcesData &report) {
         gcs_resource_manager_->UpdateFromResourceReport(report);
-      }));
+      });
+  gcs_resource_report_poller->Initialize(gcs_init_data);
 
-  gcs_resource_report_poller_->Initialize(gcs_init_data);
-  gcs_resource_report_poller_->Start();
-}
-
-void GcsServer::InitResourceReportBroadcasting(const GcsInitData &gcs_init_data) {
-  grpc_based_resource_broadcaster_ = std::make_unique<GrpcBasedResourceBroadcaster>(
+  auto grpc_based_resource_broadcaster = std::make_unique<GrpcBasedResourceBroadcaster>(
       raylet_client_pool_,
       [this](rpc::ResourceUsageBroadcastData &buffer) {
-    gcs_resource_manager_->GetResourceUsageBatchForBroadcast(buffer);
-      };
+        gcs_resource_manager_->GetResourceUsageBatchForBroadcast(buffer);
+      });
 
-    grpc_based_resource_broadcaster_->Initialize(gcs_init_data);
-    grpc_based_resource_broadcaster_->Start();
+  grpc_based_resource_broadcaster->Initialize(gcs_init_data);
+
+  ray_sync_ = std::make_unique<RaySync>(std::move(grpc_based_resource_broadcaster),
+                                        std::move(gcs_resource_report_poller));
+
+  ray_sync_->Start();
+
 }
-}
+
 
 void GcsServer::InitStatsHandler() {
   RAY_CHECK(gcs_table_storage_);
@@ -509,8 +505,7 @@ void GcsServer::InstallEventListeners() {
     gcs_placement_group_manager_->OnNodeAdd(NodeID::FromBinary(node->node_id()));
     gcs_actor_manager_->SchedulePendingActors();
     gcs_heartbeat_manager_->AddNode(NodeID::FromBinary(node->node_id()));
-    gcs_resource_report_poller_->HandleNodeAdded(*node);
-    grpc_based_resource_broadcaster_->HandleNodeAdded(*node);
+    ray_sync_->AddNode(*node);
   });
   gcs_node_manager_->AddNodeRemovedListener(
       [this](std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -522,8 +517,7 @@ void GcsServer::InstallEventListeners() {
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
         raylet_client_pool_->Disconnect(NodeID::FromBinary(node->node_id()));
-        gcs_resource_report_poller_->HandleNodeRemoved(*node);
-        grpc_based_resource_broadcaster_->HandleNodeRemoved(*node);
+        ray_sync_->RemoveNode();
       });
 
   // Install worker event listener.
@@ -588,7 +582,7 @@ std::string GcsServer::GetDebugState() const {
          << gcs_publisher_->DebugString() << "\n\n"
          << runtime_env_manager_->DebugString() << "\n\n";
 
-  stream << grpc_based_resource_broadcaster_->DebugString();
+  stream << ray_sync_->DebugString();
   return stream.str();
 }
 
