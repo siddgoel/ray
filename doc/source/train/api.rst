@@ -195,10 +195,24 @@ train.torch.prepare_model
 
 .. autofunction:: ray.train.torch.prepare_model
 
+.. _train-api-torch-prepare-data-loader:
+
 train.torch.prepare_data_loader
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.torch.prepare_data_loader
+
+train.torch.prepare_optimizer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.prepare_optimizer
+
+
+train.torch.backward
+~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.backward
+
 
 train.torch.get_device
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -212,11 +226,18 @@ train.torch.enable_reproducibility
 
 .. _train-api-torch-worker-profiler:
 
+train.torch.accelerate
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.accelerate
+
 train.torch.TorchWorkerProfiler
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: ray.train.torch.TorchWorkerProfiler
     :members:
+
+.. _train-api-tensorflow-utils:
 
 TensorFlow Training Function Utilities
 --------------------------------------

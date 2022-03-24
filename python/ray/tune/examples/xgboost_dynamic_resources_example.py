@@ -176,12 +176,11 @@ def tune_xgboost(use_class_trainable=True):
         robust approach.
 
         Args:
-            trial_runner (TrialRunner): Trial runner for this Tune run.
+            trial_runner: Trial runner for this Tune run.
                 Can be used to obtain information about other trials.
-            trial (Trial): The trial to allocate new resources to.
-            result (Dict[str, Any]): The latest results of trial.
-            scheduler (ResourceChangingScheduler): The scheduler calling
-                the function.
+            trial: The trial to allocate new resources to.
+            result: The latest results of trial.
+            scheduler: The scheduler calling the function.
         """
 
         # Get base trial resources as defined in
@@ -201,7 +200,9 @@ def tune_xgboost(use_class_trainable=True):
         min_cpu = base_trial_resource.required_resources.get("CPU", 0)
 
         # Get the number of CPUs available in total (not just free)
-        total_available_cpus = trial_runner.trial_executor._avail_resources.cpu
+        total_available_cpus = (
+            trial_runner.trial_executor._resource_updater.get_num_cpus()
+        )
 
         # Divide the free CPUs among all live trials
         cpu_to_use = max(

@@ -23,7 +23,6 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_until_succeeded_without_exception,
 )
-from ray._private.gcs_pubsub import gcs_pubsub_enabled
 from ray.ray_constants import DEBUG_AUTOSCALING_STATUS_LEGACY, DEBUG_AUTOSCALING_ERROR
 from ray.dashboard import dashboard
 import ray.dashboard.consts as dashboard_consts
@@ -701,13 +700,33 @@ def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
 
     gcs_server_proc.kill()
     gcs_server_proc.wait()
-    if gcs_pubsub_enabled():
-        # When pubsub enabled, the exits comes from pubsub errored.
-        # TODO: Fix this exits logic for pubsub
-        assert dashboard_proc.wait(10) != 0
-    else:
-        # The dashboard exits by os._exit(-1)
-        assert dashboard_proc.wait(10) == 255
+
+    # The dashboard exits by os._exit(-1)
+    assert dashboard_proc.wait(10) == 255
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_DEFAULT") != "1",
+    reason="This test only works for default installation.",
+)
+def test_dashboard_does_not_depend_on_serve():
+    """Check that the dashboard can start without Serve."""
+
+    with pytest.raises(ImportError):
+        from ray import serve  # noqa: F401
+
+    ctx = ray.init(include_dashboard=True)
+
+    # Ensure standard dashboard features, like snapshot, still work
+    response = requests.get(f"http://{ctx.dashboard_url}/api/snapshot")
+    assert response.status_code == 200
+    assert response.json()["result"] is True
+    assert "snapshot" in response.json()["data"]
+
+    # Check that Serve-dependent features fail
+    response = requests.get(f"http://{ctx.dashboard_url}/api/serve/deployments/")
+    assert response.status_code == 500
+    assert "ModuleNotFoundError" in response.text
 
 
 if __name__ == "__main__":
